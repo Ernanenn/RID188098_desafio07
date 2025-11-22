@@ -5,27 +5,31 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
-
-type SafeUser = Omit<User, 'password'>;
+import { PasswordService } from '../common/services/password.service';
+import { ERROR_MESSAGES } from '../common/constants';
+import { SafeUser } from '../common/types';
 
 @Injectable()
 export class UsersService {
-  private readonly saltRounds = 10;
-
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    private readonly passwordService: PasswordService,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<SafeUser> {
     await this.ensureUniqueFields(createUserDto.username, createUserDto.email);
 
-    const password = await this.hashPassword(createUserDto.password);
-    const user = this.usersRepository.create({ ...createUserDto, password });
+    const hashedPassword = await this.passwordService.hash(
+      createUserDto.password,
+    );
+    const user = this.usersRepository.create({
+      ...createUserDto,
+      password: hashedPassword,
+    });
     const savedUser = await this.usersRepository.save(user);
     return this.sanitize(savedUser);
   }
@@ -38,7 +42,7 @@ export class UsersService {
   async findOne(id: number): Promise<SafeUser> {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) {
-      throw new NotFoundException(`Usuário ${id} não encontrado`);
+      throw new NotFoundException(ERROR_MESSAGES.USER_NOT_FOUND(id));
     }
     return this.sanitize(user);
   }
@@ -46,17 +50,19 @@ export class UsersService {
   async update(id: number, updateUserDto: UpdateUserDto): Promise<SafeUser> {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) {
-      throw new NotFoundException(`Usuário ${id} não encontrado`);
+      throw new NotFoundException(ERROR_MESSAGES.USER_NOT_FOUND(id));
     }
 
-    await this.ensureUniqueFields(
-      updateUserDto.username ?? user.username,
-      updateUserDto.email ?? user.email,
-      id,
-    );
+    if (updateUserDto.username || updateUserDto.email) {
+      const usernameToCheck = updateUserDto.username ?? user.username;
+      const emailToCheck = updateUserDto.email ?? user.email;
+      await this.ensureUniqueFields(usernameToCheck, emailToCheck, id);
+    }
 
     if (updateUserDto.password) {
-      updateUserDto.password = await this.hashPassword(updateUserDto.password);
+      updateUserDto.password = await this.passwordService.hash(
+        updateUserDto.password,
+      );
     }
 
     const updatedUser = await this.usersRepository.save({
@@ -69,7 +75,7 @@ export class UsersService {
   async remove(id: number): Promise<SafeUser> {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) {
-      throw new NotFoundException(`Usuário ${id} não encontrado`);
+      throw new NotFoundException(ERROR_MESSAGES.USER_NOT_FOUND(id));
     }
     await this.usersRepository.remove(user);
     return this.sanitize(user);
@@ -80,12 +86,9 @@ export class UsersService {
   }
 
   private sanitize(user: User): SafeUser {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _password, ...rest } = user;
     return rest;
-  }
-
-  private async hashPassword(rawPassword: string): Promise<string> {
-    return bcrypt.hash(rawPassword, this.saltRounds);
   }
 
   private async ensureUniqueFields(
@@ -103,12 +106,11 @@ export class UsersService {
     ]);
 
     if (existingUsername && existingUsername.id !== ignoreId) {
-      throw new BadRequestException('Username já está em uso');
+      throw new BadRequestException(ERROR_MESSAGES.USERNAME_ALREADY_EXISTS);
     }
 
     if (existingEmail && existingEmail.id !== ignoreId) {
-      throw new BadRequestException('Email já está em uso');
+      throw new BadRequestException(ERROR_MESSAGES.EMAIL_ALREADY_EXISTS);
     }
   }
 }
-

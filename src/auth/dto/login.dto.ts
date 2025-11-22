@@ -1,10 +1,12 @@
-import { IsNotEmpty } from 'class-validator';
+import { IsNotEmpty, IsString } from 'class-validator';
+import { VALIDATION_MESSAGES } from '../../common/constants';
 
 export class LoginDto {
-  @IsNotEmpty()
+  @IsNotEmpty({ message: VALIDATION_MESSAGES.USERNAME_REQUIRED })
+  @IsString()
   username: string;
 
-  @IsNotEmpty()
+  @IsNotEmpty({ message: VALIDATION_MESSAGES.PASSWORD_REQUIRED })
+  @IsString()
   password: string;
 }
-

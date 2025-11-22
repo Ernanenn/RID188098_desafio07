@@ -1,7 +1,7 @@
 {
   "name": "desafio-users",
   "version": "0.0.1",
-  "description": "",
+  "description": "API REST de Usuários com NestJS + MySQL - Autenticação JWT, Clean Code e Arquitetura Moderna",
   "author": "",
   "private": true,
   "license": "UNLICENSED",
